@@ -985,7 +985,7 @@ fn process_source(
             process_source_reorder(input, node, render_elements);
             return;
         }
-        println!(
+        eprintln!(
             "The code uses disabled regions. Reordering is currently incompatible with disabled formatting as it can span any lines and reordering may break the disabled regions. Skipping reordering."
         );
     }

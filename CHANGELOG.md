@@ -21,6 +21,8 @@ This file documents the changes made to the formatter with each release.
 - Preserve up to one blank line used to group elements in "containers" like enums
 - Fixed losing blank line between statements in a body if the previous statement has an inline comment (#320, thanks @Buitragox for the fix)
 - Fixed various edge cases with ignored directories: paths are now normalized before comparison
+- Fixed special get syntax with parentheses having an extra space (#314)
+- Output warnings to stderr when using reorder and safe mode together (#332)
 
 ## Release 0.24.0 (2026-07-25)
 
