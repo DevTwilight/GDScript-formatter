@@ -2295,6 +2295,7 @@ fn expression_is_in_single_indent_container(node: tree_sitter::Node) -> bool {
                 | GDScriptNodeKind::Arguments
                 | GDScriptNodeKind::SubscriptArguments
                 | GDScriptNodeKind::ParenthesizedExpression
+                | GDScriptNodeKind::MatchBody
         ) {
             return true;
         }

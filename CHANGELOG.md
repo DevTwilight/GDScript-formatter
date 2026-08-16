@@ -25,6 +25,7 @@ This file documents the changes made to the formatter with each release.
 - Fixed special get syntax with parentheses having an extra space (#314)
 - Output warnings to stderr when using reorder and safe mode together (#332)
 - Removed the space between `...` and variadic parameter names (#331)
+- Fixed incorrect indentation for match patterns using `and` or `or` (#328)
 
 ## Release 0.24.0 (2026-07-25)
 
