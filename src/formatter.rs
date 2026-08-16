@@ -360,6 +360,15 @@ fn process_node(
         }
         GDScriptNodeKind::Lambda => process_lambda(input, node, render_elements),
         GDScriptNodeKind::Function => process_function(input, node, render_elements),
+        GDScriptNodeKind::Variable
+        | GDScriptNodeKind::ExportVariable
+        | GDScriptNodeKind::OnReadyVariable
+            if has_inline_annotations_child(node) =>
+        {
+            let group_index = begin_group(render_elements);
+            process_children_with_spacing(input, node, render_elements);
+            finish_group(render_elements, group_index);
+        }
         GDScriptNodeKind::SetGet => process_setget(input, node, render_elements),
         GDScriptNodeKind::ParenthesizedExpression => {
             process_parenthesized_expression(input, node, render_elements)
@@ -369,6 +378,46 @@ fn process_node(
         GDScriptNodeKind::Attribute => process_attribute(input, node, render_elements),
         _ => process_children_with_spacing(input, node, render_elements),
     }
+}
+
+fn has_inline_annotations_child(node: tree_sitter::Node) -> bool {
+    let mut child_index = 0;
+    while child_index < node.child_count() {
+        if let Some(child) = node.child(child_index as u32)
+            && GDScriptNodeKind::get_kind_from_ast_node(child) == GDScriptNodeKind::Annotations
+        {
+            let Some(next_child) = node.child((child_index + 1) as u32) else {
+                return false;
+            };
+            return child.end_position().row == next_child.start_position().row;
+        }
+        child_index += 1;
+    }
+    false
+}
+
+fn is_inline_variable_annotation_arguments(node: tree_sitter::Node) -> bool {
+    let Some(annotation) = node.parent() else {
+        return false;
+    };
+    if GDScriptNodeKind::get_kind_from_ast_node(annotation) != GDScriptNodeKind::Annotation {
+        return false;
+    }
+    let Some(annotations) = annotation.parent() else {
+        return false;
+    };
+    if GDScriptNodeKind::get_kind_from_ast_node(annotations) != GDScriptNodeKind::Annotations {
+        return false;
+    }
+    let Some(variable) = annotations.parent() else {
+        return false;
+    };
+    matches!(
+        GDScriptNodeKind::get_kind_from_ast_node(variable),
+        GDScriptNodeKind::Variable
+            | GDScriptNodeKind::ExportVariable
+            | GDScriptNodeKind::OnReadyVariable
+    ) && has_inline_annotations_child(variable)
 }
 
 /// Groups a function header (the declaration line/first line) separately from
@@ -1588,9 +1637,7 @@ fn process_container(
         if let Some(open) = node.child(0) {
             process_node(input, open, render_elements);
         }
-        if node_kind == GDScriptNodeKind::Dictionary
-            || node_kind == GDScriptNodeKind::EnumeratorList
-        {
+        if node_kind == GDScriptNodeKind::Dictionary {
             render_elements.push(RenderElement::Space);
         }
         if let Some(close) = node.child(1) {
@@ -1603,7 +1650,10 @@ fn process_container(
         && node.parent().is_some_and(|parent| {
             GDScriptNodeKind::get_kind_from_ast_node(parent) == GDScriptNodeKind::Function
         });
-    let group_index = if is_function_parameters {
+    let group_index = if is_function_parameters
+        || (node_kind == GDScriptNodeKind::Arguments
+            && is_inline_variable_annotation_arguments(node))
+    {
         None
     } else {
         Some(begin_group(render_elements))
@@ -1620,8 +1670,7 @@ fn process_container(
     render_elements.push(RenderElement::SoftLine);
 
     // When we have delimiters like in a function calls, we apply just one
-    // indent. Before, we applied double indents by default, treating them as
-    // continuation lines.
+    // indent. We don't treat them as continuation lines.
     let indent_index = begin_indent(render_elements, 1);
 
     let mut has_comment = false;
@@ -3103,6 +3152,10 @@ fn process_separator_between_sibling_nodes(
     }
 
     if previous_kind == GDScriptNodeKind::LineContinuation {
+        return;
+    }
+
+    if previous_child.kind() == "..." {
         return;
     }
 
