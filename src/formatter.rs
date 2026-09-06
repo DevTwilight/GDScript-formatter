@@ -779,13 +779,12 @@ fn process_body(
                 let previous_is_declaration =
                     is_declaration(last_processed_child_kind.unwrap_or(GDScriptNodeKind::Other));
                 if last_processed_child_kind == Some(GDScriptNodeKind::Annotation) {
-                    if current_child_kind != GDScriptNodeKind::Annotation
+                    if (current_child_kind != GDScriptNodeKind::Annotation
                         && current_child_kind != GDScriptNodeKind::Comment
                         && current_is_declaration
-                        && !has_own_annotations_child(child)
+                        && !has_own_annotations_child(child))
+                        || has_newline(source, previous_end, child.start_byte())
                     {
-                        render_elements.push(RenderElement::HardLine);
-                    } else if has_newline(source, previous_end, child.start_byte()) {
                         render_elements.push(RenderElement::HardLine);
                     } else {
                         render_elements.push(RenderElement::Space);
