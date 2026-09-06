@@ -38,3 +38,8 @@ class AnnotationsInClassBody:
 	var exported_url: String = (
 		_js_window.location.hash.trim_prefix("#").trim_prefix("/") + _js_window.location.hash.trim_prefix("#").trim_prefix("/")
 	)
+
+
+func annotation_on_local_variable():
+	@warning_ignore("unused_local_constant")
+	var unused_local_constant = 1

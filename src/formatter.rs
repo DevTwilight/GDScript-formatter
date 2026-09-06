@@ -784,7 +784,7 @@ fn process_body(
                         && current_is_declaration
                         && !has_own_annotations_child(child)
                     {
-                        render_elements.push(RenderElement::Space);
+                        render_elements.push(RenderElement::HardLine);
                     } else if has_newline(source, previous_end, child.start_byte()) {
                         render_elements.push(RenderElement::HardLine);
                     } else {
