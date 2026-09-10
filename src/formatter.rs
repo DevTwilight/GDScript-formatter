@@ -1177,22 +1177,55 @@ fn output_pending_before_declaration(
     declaration: tree_sitter::Node,
 ) {
     let source = input.source;
-    let declaration_kind = GDScriptNodeKind::get_kind_from_ast_node(declaration);
+    let mut declaration_kind = GDScriptNodeKind::get_kind_from_ast_node(declaration);
     let declaration_start = declaration.start_byte();
-    let declaration_needs_two_blank = needs_two_blank_lines(declaration_kind);
-    let previous_kind = spacing_context
+    let mut previous_kind = spacing_context
         .last_declaration_kind
         .unwrap_or(GDScriptNodeKind::Other);
-    let previous_needs_two_blank = needs_two_blank_lines(previous_kind);
-    let declaration_is_region = declaration_kind == GDScriptNodeKind::RegionStart
-        || declaration_kind == GDScriptNodeKind::RegionEnd;
-    let previous_is_region = spacing_context.last_declaration_kind
-        == Some(GDScriptNodeKind::RegionStart)
-        || spacing_context.last_declaration_kind == Some(GDScriptNodeKind::RegionEnd);
-    let wants_two_blank_lines = if declaration_is_region || previous_is_region {
+    // If we stumble upon a region marker after comments and annotations, we look for a relevant declaration inside the region
+    // to determine the spacing around the region. We want to ignore region
+    // markers and still apply e.g. 2 blank lines around the region if before
+    // and inside the region we have functions for example.
+    let is_current_region_start_or_end = declaration_kind == GDScriptNodeKind::RegionEnd
+        || previous_kind == GDScriptNodeKind::RegionStart;
+    if declaration_kind == GDScriptNodeKind::RegionStart {
+        let mut node_following_region_start = declaration.next_named_sibling();
+        while let Some(sibling) = node_following_region_start {
+            let kind = GDScriptNodeKind::get_kind_from_ast_node(sibling);
+            if !matches!(
+                kind,
+                GDScriptNodeKind::RegionStart
+                    | GDScriptNodeKind::Comment
+                    | GDScriptNodeKind::Annotation
+            ) {
+                declaration_kind = kind;
+                break;
+            }
+            node_following_region_start = sibling.next_named_sibling();
+        }
+    }
+    if previous_kind == GDScriptNodeKind::RegionEnd {
+        let mut node_preceding_last_region_end = declaration.prev_named_sibling();
+        while let Some(sibling) = node_preceding_last_region_end {
+            let kind = GDScriptNodeKind::get_kind_from_ast_node(sibling);
+            if !matches!(
+                kind,
+                GDScriptNodeKind::RegionEnd
+                    | GDScriptNodeKind::Comment
+                    | GDScriptNodeKind::Annotation
+            ) {
+                previous_kind = kind;
+                break;
+            }
+            node_preceding_last_region_end = sibling.prev_named_sibling();
+        }
+    }
+    let current_needs_two_blank_lines = needs_two_blank_lines(declaration_kind);
+    let previous_needs_two_blank_lines = needs_two_blank_lines(previous_kind);
+    let wants_two_blank_lines = if is_current_region_start_or_end {
         false
     } else {
-        previous_needs_two_blank || declaration_needs_two_blank
+        previous_needs_two_blank_lines || current_needs_two_blank_lines
     };
     let separator_blank_count = calculate_separator_blank_count(
         input,
@@ -1219,8 +1252,7 @@ fn output_pending_before_declaration(
             }
             return;
         }
-        // Region markers should have no added blank lines.
-        if declaration_is_region || previous_is_region {
+        if is_current_region_start_or_end {
             push_separator_for_newline_count(newlines, render_elements);
             return;
         }
@@ -1228,7 +1260,7 @@ fn output_pending_before_declaration(
         // either the previous or current declaration needs them
         // (function/class/constructor). Otherwise preserve the input blank
         // lines up to 1.
-        if previous_needs_two_blank || declaration_needs_two_blank {
+        if previous_needs_two_blank_lines || current_needs_two_blank_lines {
             push_blank_lines(render_elements, separator_blank_count);
         } else {
             push_separator_for_newline_count(newlines, render_elements);
@@ -1275,7 +1307,8 @@ fn output_pending_before_declaration(
     // right before that declaration.
     let mut leading_count = 0;
     if has_previous_content
-        && declaration_needs_two_blank
+        && current_needs_two_blank_lines
+        && !is_current_region_start_or_end
         && newline_count_from_last_pending == 1
         && last_on_new_line
     {
@@ -1450,7 +1483,7 @@ fn output_pending_before_declaration(
         render_elements.push(RenderElement::Space);
     } else if attached_to_declaration {
         render_elements.push(RenderElement::HardLine);
-    } else if declaration_needs_two_blank {
+    } else if current_needs_two_blank_lines {
         let declaration_blank_count =
             get_blank_line_count_before_declaration(input, declaration_kind);
         push_blank_lines(render_elements, declaration_blank_count);

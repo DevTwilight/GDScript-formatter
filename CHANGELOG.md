@@ -2,6 +2,12 @@
 
 This file documents the changes made to the formatter with each release.
 
+## Unreleased
+
+### Fixed
+
+- Fixed format and reorder commands having a different result with blank lines around regions containing functions (#337). The formatter will now apply blank line rules across region markers.
+
 ## Release 0.25.0 (2026-09-06)
 
 ### Added

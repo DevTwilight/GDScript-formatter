@@ -1,15 +1,5 @@
-# #region / #endregion markers
-# Region start and end comments stay next to the lines they enclose, but spacing
-# is applied around the region based on the enclosed content.
-#region Description
-func test():
-	pass
-#endregion
+extends Node
 
-#region AnotherRegion
-func test2():
-	pass
-#endregion
 
 func foo() -> void:
 	print("foo")
@@ -23,7 +13,7 @@ func after_region():
 #region B (outer region)
 #region C (nested inside B)
 
-## Test docstring
+## A documented function.
 @warning_ignore("unused_parameter")
 func nested(value):
 	pass
