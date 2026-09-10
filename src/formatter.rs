@@ -168,26 +168,6 @@ fn has_newline(source: &str, from: usize, to: usize) -> bool {
     false
 }
 
-/// Returns `true` if the node or any of its children has the given kind.
-fn contains_forced_multiline_node(node: tree_sitter::Node) -> bool {
-    if matches!(
-        GDScriptNodeKind::get_kind_from_ast_node(node),
-        GDScriptNodeKind::Lambda | GDScriptNodeKind::Condition
-    ) {
-        return true;
-    }
-    let mut child_index = 0;
-    while child_index < node.child_count() {
-        if let Some(child) = node.child(child_index as u32)
-            && contains_forced_multiline_node(child)
-        {
-            return true;
-        }
-        child_index += 1;
-    }
-    false
-}
-
 fn is_class_header(kind: GDScriptNodeKind) -> bool {
     matches!(
         kind,
@@ -1910,9 +1890,11 @@ fn process_container(
     }
 }
 
-/// Formats ParenthesizedExpression nodes with a Group. Falls back to
-/// process_children_with_spacing for single-line expressions or when the inner
-/// content already handles its own indentation (lambdas, arrays, dicts).
+/// Formats ParenthesizedExpression nodes with a Group. The group lets a long
+/// expression use its parentheses as a safe break boundary instead of breaking
+/// an enclosing line at an operator inside the expression. Inner constructs
+/// that already handle their own indentation (lambdas, arrays, dicts) keep
+/// their specialized formatting.
 fn process_parenthesized_expression(
     input: &ParseInput,
     node: tree_sitter::Node,
@@ -1958,21 +1940,6 @@ fn process_parenthesized_expression(
             }
             return;
         }
-        process_children_with_spacing(input, node, render_elements);
-        return;
-    }
-
-    let body_has_newlines = {
-        if let (Some(open_node), Some(close_node)) =
-            (node.child(0), node.child((child_count - 1) as u32))
-        {
-            has_newline(input.source, open_node.end_byte(), close_node.start_byte())
-        } else {
-            false
-        }
-    };
-    let contains_forced_multiline = contains_forced_multiline_node(node);
-    if !body_has_newlines && !contains_forced_multiline {
         process_children_with_spacing(input, node, render_elements);
         return;
     }
