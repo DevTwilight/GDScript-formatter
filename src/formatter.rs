@@ -350,12 +350,19 @@ fn process_node(
             finish_group(render_elements, group_index);
         }
         GDScriptNodeKind::SetGet => process_setget(input, node, render_elements),
-        GDScriptNodeKind::ParenthesizedExpression => {
-            process_parenthesized_expression(input, node, render_elements)
+        GDScriptNodeKind::ParenthesizedExpression
+        | GDScriptNodeKind::Attribute
+        | GDScriptNodeKind::Subscript
+        | GDScriptNodeKind::Call => {
+            // Wrapping the entire expression in a group helps with calculating
+            // the length of code segments and knowing where to break lines for
+            // vertical spacing in the renderer.
+            let group_index = begin_group(render_elements);
+            process_expression_content(input, node, render_elements);
+            finish_group(render_elements, group_index);
         }
         GDScriptNodeKind::BinaryOperator => process_binary_operator(input, node, render_elements),
         GDScriptNodeKind::Condition => process_conditional_expression(input, node, render_elements),
-        GDScriptNodeKind::Attribute => process_attribute(input, node, render_elements),
         _ => process_children_with_spacing(input, node, render_elements),
     }
 }
@@ -1890,16 +1897,37 @@ fn process_container(
     }
 }
 
-/// Formats ParenthesizedExpression nodes with a Group. The group lets a long
-/// expression use its parentheses as a safe break boundary instead of breaking
-/// an enclosing line at an operator inside the expression. Inner constructs
-/// that already handle their own indentation (lambdas, arrays, dicts) keep
-/// their specialized formatting.
-fn process_parenthesized_expression(
+/// Processes part of an expression and appends render elements, without
+/// creating a new group. This recursively processes child nodes as an
+/// expression can contain sub-expressions, operators, lambda functions, etc.
+///
+/// The IR for everything visited is added to `render_elements`.
+fn process_expression_content(
     input: &ParseInput,
     node: tree_sitter::Node,
     render_elements: &mut Vec<RenderElement>,
 ) {
+    match GDScriptNodeKind::get_kind_from_ast_node(node) {
+        GDScriptNodeKind::Attribute => {
+            process_attribute(input, node, render_elements);
+            return;
+        }
+        GDScriptNodeKind::Subscript | GDScriptNodeKind::Call => {
+            process_children_with_spacing(input, node, render_elements);
+            return;
+        }
+        GDScriptNodeKind::ParenthesizedExpression => {}
+        // As we dive down the AST, we can stumble upon anything. For example,
+        // an attribute call can be a method call that within the arguments has
+        // a lambda function wrapped in parentheses or anything else. When we
+        // stumble upon something like that, we need to process those nodes
+        // recursively.
+        _ => {
+            process_node(input, node, render_elements);
+            return;
+        }
+    }
+
     let child_count = node.child_count();
     if child_count < 3 {
         process_children_with_spacing(input, node, render_elements);
@@ -1944,8 +1972,6 @@ fn process_parenthesized_expression(
         return;
     }
 
-    let group_index = begin_group(render_elements);
-
     if let Some(open) = node.child(0) {
         process_node(input, open, render_elements);
     }
@@ -1979,8 +2005,6 @@ fn process_parenthesized_expression(
     if let Some(close) = node.child((child_count - 1) as u32) {
         process_node(input, close, render_elements);
     }
-
-    finish_group(render_elements, group_index);
 }
 
 /// Finds and returns the unnamed operator token between a binary expression's
@@ -2459,14 +2483,24 @@ fn process_attribute(
     render_elements: &mut Vec<RenderElement>,
 ) {
     let child_count = node.child_count();
-    // Only handle dot-access chains (child_count >= 5: at least 2 method calls).
-    // Single method calls like a.foo() go through process_children_with_spacing.
-    let is_dot_chain = if let Some(c) = node.child(1) {
-        GDScriptNodeKind::get_kind_from_ast_node(c) == GDScriptNodeKind::TokenDot
-    } else {
-        false
-    };
-    if child_count < 5 || !is_dot_chain {
+    // An attribute node is an expression followed by dots using the dot
+    // accessor and accessing members or calling methods.
+    //
+    // If the chain has multiple dots, we need to specifically handle
+    // continuation lines. So we count the dots in the attribute chain and
+    // format accordingly.
+    let mut dot_count = 0;
+    let mut child_index = 0;
+    while child_index < child_count {
+        if let Some(child) = node.child(child_index as u32)
+            && GDScriptNodeKind::get_kind_from_ast_node(child) == GDScriptNodeKind::TokenDot
+        {
+            dot_count += 1;
+        }
+        child_index += 1;
+    }
+    let has_multiple_dot_accesses = dot_count >= 2;
+    if !has_multiple_dot_accesses {
         process_children_with_spacing(input, node, render_elements);
         return;
     }
@@ -2529,8 +2563,6 @@ fn process_attribute(
         }
         child_index += 1;
     }
-
-    let group_index = begin_group(render_elements);
 
     if let Some(expr) = node.child(0) {
         process_node(input, expr, render_elements);
@@ -2652,7 +2684,6 @@ fn process_attribute(
 
         attribute_index += 2;
     }
-    finish_group(render_elements, group_index);
 }
 
 /// Builds a method call inside a dot-access chain. Its argument container is
@@ -3046,7 +3077,18 @@ fn process_children_with_spacing(
                 index += 1;
                 continue;
             }
-            process_node(input, child, render_elements);
+            if index == 0
+                && matches!(
+                    parent_kind,
+                    GDScriptNodeKind::Attribute
+                        | GDScriptNodeKind::Subscript
+                        | GDScriptNodeKind::Call
+                )
+            {
+                process_expression_content(input, child, render_elements);
+            } else {
+                process_node(input, child, render_elements);
+            }
             previous = Some(child);
         }
         index += 1;

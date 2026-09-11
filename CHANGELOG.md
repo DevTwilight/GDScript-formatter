@@ -8,6 +8,7 @@ This file documents the changes made to the formatter with each release.
 
 - Fixed format and reorder commands having a different result with blank lines around regions containing functions (#337). The formatter will now apply blank line rules across region markers.
 - Fix long parenthesized expression chained with a method call in an assignment, not wrapping past the max line length (#338).
+- Fixed line length calculation for long expression chains with subscript accesses and other cases like attribute access with parenthesized expressions (#342)
 
 ## Release 0.25.0 (2026-09-06)
 
