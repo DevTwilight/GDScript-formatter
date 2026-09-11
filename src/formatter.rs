@@ -2421,6 +2421,8 @@ fn process_conditional_expression(
             if is_current_conditional_keyword
                 && previous_kind != GDScriptNodeKind::LineContinuation
                 && previous_kind != GDScriptNodeKind::Comment
+                && !(has_line_continuation
+                    && previous.end_position().row == child.start_position().row)
             {
                 render_elements.push(RenderElement::SoftLine);
             } else {
